@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+.env
+data/processed/
+chroma_db/
+
+.history/
