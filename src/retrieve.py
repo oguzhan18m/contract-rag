@@ -5,12 +5,17 @@ Diğer scriptler buradan import eder:  from retrieve import retrieve
 import json
 import re
 import chromadb
+import anthropic
+from dotenv import load_dotenv
 from rank_bm25 import BM25Okapi
+
+load_dotenv()
 
 DB_PATH = "chroma_db"
 COLLECTION = "contracts"
 CHUNKS_PATH = "data/processed/chunks.jsonl"
 RRF_K = 60   # RRF formülündeki sabit; standart değer
+EXPAND_MODEL = "claude-haiku-5-5"
 
 
 def tokenize(text):
@@ -52,6 +57,41 @@ def hybrid_search(question, n):
     return sorted(scores, key=scores.get, reverse=True)
 
 
+EXPAND_PROMPT = """You help search a collection of commercial contracts.
+Rewrite the user's question as 3 alternative search queries that use wording
+likely to appear in the contract text itself (legal synonyms, section headings,
+typical clause phrasing). Keep any company names.
+Return exactly 3 lines, one query per line, no numbering, no extra text."""
+
+
+def expand_query(question):
+    """Claude'dan sorunun sözleşme diliyle yazılmış 3 alternatifini iste."""
+    msg = anthropic.Anthropic().messages.create(
+        model=EXPAND_MODEL,
+        max_tokens=300,
+        system=EXPAND_PROMPT,
+        messages=[{"role": "user", "content": question}],
+    )
+    text = "".join(b.text for b in msg.content if b.type == "text")
+    return [line.strip() for line in text.splitlines() if line.strip()][:3]
+
+
+def expanded_search(question, n):
+    """
+    Orijinal soru + 3 alternatif = 4 sorgu. Her sorgu için vektör ve BM25 listesi alınır
+    (toplam 8 liste) ve hepsi hybrid_search'teki gibi RRF ile birleştirilir.
+    """
+    queries = [question] + expand_query(question)
+    scores = {}
+    # TODO: queries listesindeki HER sorgu için, hybrid_search'teki iki döngünün aynısını çalıştır
+    #   ipucu: en dışa  "for q in queries:"  ekle; içeride vector_search(q, n) ve bm25_search(q, n) kullan
+    for q in queries:
+        for ranked in (vector_search(q, n), bm25_search(q, n)):
+            for rank, chunk_id in enumerate(ranked, start=1):
+                scores[chunk_id] = scores.get(chunk_id, 0) + 1 / (RRF_K + rank)
+    return sorted(scores, key=scores.get, reverse=True)
+
+
 def dedupe_pages(chunk_ids, k):
     """Aynı sayfadan gelen tekrarları at, ilk k farklı sayfanın parçasını döndür."""
     seen, out = set(), []
@@ -68,7 +108,8 @@ def dedupe_pages(chunk_ids, k):
 
 
 def retrieve(question, k=5, method="hybrid"):
-    """method: 'vector' | 'bm25' | 'hybrid'. Her parça {file, page, chunk_id, text} şeklinde döner."""
-    search = {"vector": vector_search, "bm25": bm25_search, "hybrid": hybrid_search}[method]
+    """method: 'vector' | 'bm25' | 'hybrid' | 'expanded'. Her parça {file, page, chunk_id, text} şeklinde döner."""
+    search = {"vector": vector_search, "bm25": bm25_search,
+              "hybrid": hybrid_search, "expanded": expanded_search}[method]
     pool = k * 4   # tekrarlar atılınca k'nın altına düşmemek için fazladan getir
     return dedupe_pages(search(question, pool), k)

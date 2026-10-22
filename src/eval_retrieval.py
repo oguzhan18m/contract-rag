@@ -10,7 +10,7 @@ from retrieve import retrieve
 
 QUESTIONS_PATH = "eval/questions.jsonl"
 TOP_K = 5
-METHODS = ["vector", "bm25", "hybrid"]
+METHODS = ["vector", "bm25", "hybrid", "expanded"]   # "expanded" Claude çağırır (~15 çağrı, birkaç sent)
 
 if __name__ == "__main__":
     with open(QUESTIONS_PATH) as f:
