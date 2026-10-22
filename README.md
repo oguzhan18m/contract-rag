@@ -72,3 +72,7 @@ python src/eval_retrieval.py   # compare retrieval methods
 - 33 questions is still a small eval set; differences of 1–2 questions are within noise.
 - Only retrieval is scored automatically; answer quality and the 5 trap questions were checked manually.
 - Some contract text is redacted (`[***]`) in the source filings.
+
+
+## Kaggle URL
+https://www.kaggle.com/code/oguzhan18m/notebook0fe62d6312
